@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Step 0: Clean up old files and directories (if they exist)
+echo "Cleaning up old files and directories..."
+sudo rm -rf /usr/local/bin/cap-vps-scripts/
+sudo rm -f /usr/local/bin/cap-vps
+sudo rm -f /home/ubuntu/bandwidth_start
+sudo rm -f /home/ubuntu/bandwidth_firewall_applied
+sudo rm -f /home/ubuntu/bandwidth_limit
+sudo rm -f /home/ubuntu/renewal_cycle
+
 # Step 1: Update system and install required dependencies
 echo "Updating system and installing dependencies..."
 sudo apt update
