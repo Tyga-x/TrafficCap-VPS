@@ -29,11 +29,11 @@ if [[ ! -f "$RENEWAL_CYCLE_FILE" ]]; then
     echo "30" > "$RENEWAL_CYCLE_FILE" # Default: 30-day cycle
 fi
 
-# Load the current bandwidth limit
+# Load the current bandwidth limit (if set)
 if [[ -f "$BANDWIDTH_LIMIT_FILE" ]]; then
     LIMIT_BYTES=$(cat "$BANDWIDTH_LIMIT_FILE")
 else
-    LIMIT_BYTES=10000000000000 # Default: 10TB
+    LIMIT_BYTES=0 # No limit set
 fi
 
 # Load the renewal cycle duration
@@ -80,7 +80,6 @@ add_bandwidth_and_renewal_limit() {
         LIMIT_BYTES=$(echo "$limit_value * 1000000000000" | bc)
     else
         echo "Invalid unit. Please enter 'GB' or 'TB'."
-        add_bandwidth_and_renewal_limit
         return
     fi
 
@@ -95,7 +94,6 @@ add_bandwidth_and_renewal_limit() {
         echo "Renewal cycle set to $renewal_days days."
     else
         echo "Invalid input. Renewal cycle must be a positive integer."
-        add_bandwidth_and_renewal_limit
         return
     fi
 
@@ -135,7 +133,22 @@ if (( current_timestamp >= expiry_timestamp )); then
 fi
 
 # Calculate total data used since start date
-total_bytes=$(vnstat --begin "$start_date" -i "$INTERFACE" --json 2>/dev/null | jq -r '.interfaces[0].traffic.total.rx + .interfaces[0].traffic.total.tx // 0')
+vnstat_output=$(vnstat --begin "$start_date" -i "$INTERFACE" --json 2>/dev/null)
+
+# Check if vnstat output is valid
+if [[ -z "$vnstat_output" || "$vnstat_output" == "{}" ]]; then
+    echo "No vnstat data available for the current period."
+    total_bytes=0
+else
+    # Parse the JSON output using jq
+    total_bytes=$(echo "$vnstat_output" | jq -r '.interfaces[0].traffic.total.rx + .interfaces[0].traffic.total.tx // 0' 2>/dev/null)
+    
+    # Handle jq parse errors
+    if [[ $? -ne 0 ]]; then
+        echo "Error parsing vnstat JSON output. Setting total usage to 0."
+        total_bytes=0
+    fi
+fi
 
 # Convert bytes to human-readable format
 total_hr=$(convert_bytes "$total_bytes")
@@ -143,23 +156,34 @@ limit_hr=$(convert_bytes "$LIMIT_BYTES")
 
 # Log usage and limit
 echo "Total Usage: $total_hr"
-echo "Bandwidth Limit: $limit_hr"
+if [[ $LIMIT_BYTES -eq 0 ]]; then
+    echo "No bandwidth limit is currently set."
+else
+    echo "Bandwidth Limit: $limit_hr"
+fi
 
-if (( total_bytes >= LIMIT_BYTES )); then
-    if [[ ! -f "$FIREWALL_RULES_APPLIED" ]]; then
-        echo "Bandwidth limit reached ($total_hr / $limit_hr). Blocking traffic..."
-        sudo ufw default deny incoming
-        sudo ufw default deny outgoing
-        sudo ufw allow ssh # Allow SSH access for management
-        touch "$FIREWALL_RULES_APPLIED"
+# Enforce bandwidth limit if set
+if [[ $LIMIT_BYTES -gt 0 ]]; then
+    if (( total_bytes >= LIMIT_BYTES )); then
+        if [[ ! -f "$FIREWALL_RULES_APPLIED" ]]; then
+            echo "Bandwidth limit reached ($total_hr / $limit_hr). Blocking traffic..."
+            sudo ufw default deny incoming
+            sudo ufw default deny outgoing
+            sudo ufw allow ssh # Allow SSH access for management
+            touch "$FIREWALL_RULES_APPLIED"
+        fi
+    else
+        if [[ -f "$FIREWALL_RULES_APPLIED" ]]; then
+            echo "Bandwidth usage is below the limit ($total_hr / $limit_hr). Allowing traffic..."
+            sudo ufw default allow incoming
+            sudo ufw default allow outgoing
+            rm -f "$FIREWALL_RULES_APPLIED"
+        fi
     fi
 else
-    if [[ -f "$FIREWALL_RULES_APPLIED" ]]; then
-        echo "Bandwidth usage is below the limit ($total_hr / $limit_hr). Allowing traffic..."
-        sudo ufw default allow incoming
-        sudo ufw default allow outgoing
-        rm -f "$FIREWALL_RULES_APPLIED"
-    fi
+    echo "No bandwidth limit is configured. Traffic is unrestricted."
+    sudo ufw default allow incoming
+    sudo ufw default allow outgoing
 fi
 
 # Show the menu
