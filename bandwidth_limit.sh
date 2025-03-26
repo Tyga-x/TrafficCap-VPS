@@ -129,23 +129,45 @@ fi
 show_real_time_usage() {
     echo "Fetching real-time bandwidth usage..."
     while true; do
-        # Use vnstat to monitor real-time traffic
-        vnstat_output=$(vnstat --oneline 2>/dev/null)
+        # Fetch real-time usage for all interfaces
+        for interface in $(sudo vnstat --iflist | grep -oP 'Available interfaces: \K.*' | tr ' ' ','); do
+            vnstat_output=$(vnstat --oneline -i "$interface" 2>/dev/null)
 
-        # Parse the oneline output
-        rx=$(echo "$vnstat_output" | awk '{print $9}')
-        tx=$(echo "$vnstat_output" | awk '{print $10}')
+            # Parse the output
+            rx=$(echo "$vnstat_output" | awk -F';' '{print $4}')
+            tx=$(echo "$vnstat_output" | awk -F';' '{print $5}')
 
-        # Convert to bytes (assuming values are in MiB)
-        rx_bytes=$(echo "$rx" | awk '{split($0,a,"."); print a[1] * 1024^2}')
-        tx_bytes=$(echo "$tx" | awk '{split($0,a,"."); print a[1] * 1024^2}')
+            # Convert to bytes (assuming values are in human-readable format)
+            rx_bytes=$(convert_to_bytes "$rx")
+            tx_bytes=$(convert_to_bytes "$tx")
 
-        total_bytes=$((rx_bytes + tx_bytes))
-        total_hr=$(convert_bytes "$total_bytes")
-        echo "Real-Time Usage: $total_hr"
+            total_bytes=$((rx_bytes + tx_bytes))
+            total_hr=$(convert_bytes "$total_bytes")
+
+            echo "Interface: $interface, Real-Time Usage: $total_hr"
+        done
 
         sleep 5 # Refresh every 5 seconds
     done
+}
+
+# Helper function to convert human-readable sizes to bytes
+convert_to_bytes() {
+    local size=$1
+    if [[ "$size" =~ ^([0-9]+(\.[0-9]+)?)\ *(GiB|MiB|KiB|B)$ ]]; then
+        value=${BASH_REMATCH[1]}
+        unit=${BASH_REMATCH[3]}
+
+        case "$unit" in
+            GiB) echo $(echo "$value * 1024^3" | bc) ;;
+            MiB) echo $(echo "$value * 1024^2" | bc) ;;
+            KiB) echo $(echo "$value * 1024" | bc) ;;
+            B) echo "$value" ;;
+            *) echo 0 ;;
+        esac
+    else
+        echo 0
+    fi
 }
 
 # Menu-driven interface
@@ -196,8 +218,17 @@ add_bandwidth_and_renewal_limit() {
         return
     fi
 
-    echo "$LIMIT_BYTES" > "$BANDWIDTH_LIMIT_FILE"
-    echo "Bandwidth limit set to $limit_value $limit_unit ($(convert_bytes $LIMIT_BYTES))."
+    echo "Enter the custom start date for the bandwidth limit (format: YYYY-MM-DD):"
+    read -p "Start Date: " custom_start_date
+
+    # Validate the date format
+    if [[ "$custom_start_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        echo "$custom_start_date" > "$START_DATE_FILE"
+        echo "Custom start date set to $custom_start_date."
+    else
+        echo "Invalid date format. Please use YYYY-MM-DD."
+        return
+    fi
 
     echo "Enter renewal cycle duration (in days, e.g., 30, 60):"
     read -p "Renewal Cycle (days): " renewal_days
@@ -209,6 +240,9 @@ add_bandwidth_and_renewal_limit() {
         echo "Invalid input. Renewal cycle must be a positive integer."
         return
     fi
+
+    echo "$LIMIT_BYTES" > "$BANDWIDTH_LIMIT_FILE"
+    echo "Bandwidth limit set to $limit_value $limit_unit ($(convert_bytes $LIMIT_BYTES))."
 
     show_menu
 }
