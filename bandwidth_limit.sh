@@ -65,6 +65,14 @@ calculate_total_usage() {
         rx=$(echo "$vnstat_output" | jq -r '.interfaces[0].traffic.total.rx // 0' 2>/dev/null)
         tx=$(echo "$vnstat_output" | jq -r '.interfaces[0].traffic.total.tx // 0' 2>/dev/null)
 
+        # Validate parsed values
+        if [[ -z "$rx" || "$rx" == "null" ]]; then
+            rx=0
+        fi
+        if [[ -z "$tx" || "$tx" == "null" ]]; then
+            tx=0
+        fi
+
         # Add to totals
         total_rx=$((total_rx + rx))
         total_tx=$((total_tx + tx))
@@ -121,9 +129,16 @@ fi
 show_real_time_usage() {
     echo "Fetching real-time bandwidth usage..."
     while true; do
-        # Use iptables to monitor real-time traffic
-        rx_bytes=$(sudo iptables -L INPUT -v -x -n | awk '/eth/{print $2}')
-        tx_bytes=$(sudo iptables -L OUTPUT -v -x -n | awk '/eth/{print $2}')
+        # Use vnstat to monitor real-time traffic
+        vnstat_output=$(vnstat --oneline 2>/dev/null)
+
+        # Parse the oneline output
+        rx=$(echo "$vnstat_output" | awk '{print $9}')
+        tx=$(echo "$vnstat_output" | awk '{print $10}')
+
+        # Convert to bytes
+        rx_bytes=$(echo "$rx" | awk '{split($0,a,"."); print a[1] * 1024^2}')
+        tx_bytes=$(echo "$tx" | awk '{split($0,a,"."); print a[1] * 1024^2}')
 
         total_bytes=$((rx_bytes + tx_bytes))
         total_hr=$(convert_bytes "$total_bytes")
