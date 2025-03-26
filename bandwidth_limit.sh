@@ -136,7 +136,7 @@ show_real_time_usage() {
         rx=$(echo "$vnstat_output" | awk '{print $9}')
         tx=$(echo "$vnstat_output" | awk '{print $10}')
 
-        # Convert to bytes
+        # Convert to bytes (assuming values are in MiB)
         rx_bytes=$(echo "$rx" | awk '{split($0,a,"."); print a[1] * 1024^2}')
         tx_bytes=$(echo "$tx" | awk '{split($0,a,"."); print a[1] * 1024^2}')
 
