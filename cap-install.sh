@@ -35,7 +35,7 @@ echo "Downloading files from GitHub repository..."
 REPO_URL="https://raw.githubusercontent.com/Tyga-x/TrafficCap-VPS/main"
 sudo mkdir -p /usr/local/bin/cap-vps-scripts
 sudo wget -O /usr/local/bin/cap-vps-scripts/bandwidth_limit.sh "$REPO_URL/bandwidth_limit.sh"
-sudo wget -O /usr/local/bin/cap-vps-scripts/uninstall.sh "$REPO_URL/uninstall.sh"
+sudo wget -O /usr/local/bin/cap-vps-scripts/cap-uninstall.sh "$REPO_URL/cap-uninstall.sh"
 if [[ $? -ne 0 ]]; then
     echo "Error: Failed to download the scripts. Exiting."
     exit 1
