@@ -218,17 +218,8 @@ add_bandwidth_and_renewal_limit() {
         return
     fi
 
-    echo "Enter the custom start date for the bandwidth limit (format: YYYY-MM-DD):"
-    read -p "Start Date: " custom_start_date
-
-    # Validate the date format
-    if [[ "$custom_start_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-        echo "$custom_start_date" > "$START_DATE_FILE"
-        echo "Custom start date set to $custom_start_date."
-    else
-        echo "Invalid date format. Please use YYYY-MM-DD."
-        return
-    fi
+    echo "$LIMIT_BYTES" > "$BANDWIDTH_LIMIT_FILE"
+    echo "Bandwidth limit set to $limit_value $limit_unit ($(convert_bytes $LIMIT_BYTES))."
 
     echo "Enter renewal cycle duration (in days, e.g., 30, 60):"
     read -p "Renewal Cycle (days): " renewal_days
@@ -240,9 +231,6 @@ add_bandwidth_and_renewal_limit() {
         echo "Invalid input. Renewal cycle must be a positive integer."
         return
     fi
-
-    echo "$LIMIT_BYTES" > "$BANDWIDTH_LIMIT_FILE"
-    echo "Bandwidth limit set to $limit_value $limit_unit ($(convert_bytes $LIMIT_BYTES))."
 
     show_menu
 }
