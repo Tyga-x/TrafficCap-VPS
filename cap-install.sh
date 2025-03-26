@@ -21,11 +21,13 @@ echo "Downloading files from GitHub repository..."
 REPO_URL="https://raw.githubusercontent.com/Tyga-x/TrafficCap-VPS/main"
 sudo mkdir -p /usr/local/bin/cap-vps-scripts # Use a different directory name
 sudo wget -O /usr/local/bin/cap-vps-scripts/bandwidth_limit.sh "$REPO_URL/bandwidth_limit.sh"
+sudo wget -O /usr/local/bin/cap-vps-scripts/uninstall.sh "$REPO_URL/uninstall.sh"
 if [[ $? -ne 0 ]]; then
-    echo "Error: Failed to download the bandwidth_limit.sh script. Exiting."
+    echo "Error: Failed to download the scripts. Exiting."
     exit 1
 fi
 sudo chmod +x /usr/local/bin/cap-vps-scripts/bandwidth_limit.sh
+sudo chmod +x /usr/local/bin/cap-vps-scripts/uninstall.sh
 
 # Step 4: Create the global command script (cap-vps)
 echo "Creating the 'cap-vps' global command..."
