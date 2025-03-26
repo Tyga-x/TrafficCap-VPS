@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Variables
-INTERFACE=$(ip route | grep default | awk '{print $5}')
 START_DATE_FILE="/home/ubuntu/bandwidth_start"
 FIREWALL_RULES_APPLIED="/home/ubuntu/bandwidth_firewall_applied"
 BANDWIDTH_LIMIT_FILE="/home/ubuntu/bandwidth_limit"
@@ -38,6 +37,82 @@ fi
 
 # Load the renewal cycle duration
 RENEWAL_DAYS=$(cat "$RENEWAL_CYCLE_FILE")
+
+# Get all available interfaces monitored by vnstat
+INTERFACES=$(sudo vnstat --iflist | grep -oP 'Available interfaces: \K.*' | tr ' ' ',')
+
+# Function to calculate total usage across all interfaces
+calculate_total_usage() {
+    local start_date=$1
+    local interfaces=$2
+    local total_rx=0
+    local total_tx=0
+
+    # Split interfaces into an array
+    IFS=',' read -r -a interface_array <<< "$interfaces"
+
+    # Loop through each interface and sum up rx/tx
+    for interface in "${interface_array[@]}"; do
+        vnstat_output=$(vnstat --begin "$start_date" -i "$interface" --json 2>/dev/null)
+
+        # Check if vnstat output is valid
+        if [[ -z "$vnstat_output" || "$vnstat_output" == "{}" ]]; then
+            echo "No vnstat data available for interface $interface."
+            continue
+        fi
+
+        # Parse the JSON output using jq
+        rx=$(echo "$vnstat_output" | jq -r '.interfaces[0].traffic.total.rx // 0' 2>/dev/null)
+        tx=$(echo "$vnstat_output" | jq -r '.interfaces[0].traffic.total.tx // 0' 2>/dev/null)
+
+        # Add to totals
+        total_rx=$((total_rx + rx))
+        total_tx=$((total_tx + tx))
+    done
+
+    # Return total usage
+    echo $((total_rx + total_tx))
+}
+
+# Calculate total data used since start date
+start_date=$(cat "$START_DATE_FILE")
+total_bytes=$(calculate_total_usage "$start_date" "$INTERFACES")
+
+# Convert bytes to human-readable format
+total_hr=$(convert_bytes "$total_bytes")
+limit_hr=$(convert_bytes "$LIMIT_BYTES")
+
+# Log usage and limit
+echo "Total Usage: $total_hr"
+if [[ $LIMIT_BYTES -eq 0 ]]; then
+    echo "No bandwidth limit is currently set."
+else
+    echo "Bandwidth Limit: $limit_hr"
+fi
+
+# Enforce bandwidth limit if set
+if [[ $LIMIT_BYTES -gt 0 ]]; then
+    if (( total_bytes >= LIMIT_BYTES )); then
+        if [[ ! -f "$FIREWALL_RULES_APPLIED" ]]; then
+            echo "Bandwidth limit reached ($total_hr / $limit_hr). Blocking traffic..."
+            sudo ufw default deny incoming
+            sudo ufw default deny outgoing
+            sudo ufw allow ssh # Allow SSH access for management
+            touch "$FIREWALL_RULES_APPLIED"
+        fi
+    else
+        if [[ -f "$FIREWALL_RULES_APPLIED" ]]; then
+            echo "Bandwidth usage is below the limit ($total_hr / $limit_hr). Allowing traffic..."
+            sudo ufw default allow incoming
+            sudo ufw default allow outgoing
+            rm -f "$FIREWALL_RULES_APPLIED"
+        fi
+    fi
+else
+    echo "No bandwidth limit is configured. Traffic is unrestricted."
+    sudo ufw default allow incoming
+    sudo ufw default allow outgoing
+fi
 
 # Menu-driven interface
 show_menu() {
@@ -130,60 +205,6 @@ if (( current_timestamp >= expiry_timestamp )); then
     rm -f "$FIREWALL_RULES_APPLIED"     # Remove firewall rules flag
     sudo ufw allow out to any
     sudo ufw allow in from any
-fi
-
-# Calculate total data used since start date
-vnstat_output=$(vnstat --begin "$start_date" -i "$INTERFACE" --json 2>/dev/null)
-
-# Check if vnstat output is valid
-if [[ -z "$vnstat_output" || "$vnstat_output" == "{}" ]]; then
-    echo "No vnstat data available for the current period."
-    total_bytes=0
-else
-    # Parse the JSON output using jq
-    total_bytes=$(echo "$vnstat_output" | jq -r '.interfaces[0].traffic.total.rx + .interfaces[0].traffic.total.tx // 0' 2>/dev/null)
-    
-    # Handle jq parse errors
-    if [[ $? -ne 0 ]]; then
-        echo "Error parsing vnstat JSON output. Setting total usage to 0."
-        total_bytes=0
-    fi
-fi
-
-# Convert bytes to human-readable format
-total_hr=$(convert_bytes "$total_bytes")
-limit_hr=$(convert_bytes "$LIMIT_BYTES")
-
-# Log usage and limit
-echo "Total Usage: $total_hr"
-if [[ $LIMIT_BYTES -eq 0 ]]; then
-    echo "No bandwidth limit is currently set."
-else
-    echo "Bandwidth Limit: $limit_hr"
-fi
-
-# Enforce bandwidth limit if set
-if [[ $LIMIT_BYTES -gt 0 ]]; then
-    if (( total_bytes >= LIMIT_BYTES )); then
-        if [[ ! -f "$FIREWALL_RULES_APPLIED" ]]; then
-            echo "Bandwidth limit reached ($total_hr / $limit_hr). Blocking traffic..."
-            sudo ufw default deny incoming
-            sudo ufw default deny outgoing
-            sudo ufw allow ssh # Allow SSH access for management
-            touch "$FIREWALL_RULES_APPLIED"
-        fi
-    else
-        if [[ -f "$FIREWALL_RULES_APPLIED" ]]; then
-            echo "Bandwidth usage is below the limit ($total_hr / $limit_hr). Allowing traffic..."
-            sudo ufw default allow incoming
-            sudo ufw default allow outgoing
-            rm -f "$FIREWALL_RULES_APPLIED"
-        fi
-    fi
-else
-    echo "No bandwidth limit is configured. Traffic is unrestricted."
-    sudo ufw default allow incoming
-    sudo ufw default allow outgoing
 fi
 
 # Show the menu
