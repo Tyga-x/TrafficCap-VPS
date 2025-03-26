@@ -98,6 +98,7 @@ if [[ $LIMIT_BYTES -gt 0 ]]; then
             sudo ufw default deny incoming
             sudo ufw default deny outgoing
             sudo ufw allow ssh # Allow SSH access for management
+            sudo ufw reload # Ensure rules are applied immediately
             touch "$FIREWALL_RULES_APPLIED"
         fi
     else
@@ -105,6 +106,7 @@ if [[ $LIMIT_BYTES -gt 0 ]]; then
             echo "Bandwidth usage is below the limit ($total_hr / $limit_hr). Allowing traffic..."
             sudo ufw default allow incoming
             sudo ufw default allow outgoing
+            sudo ufw reload # Ensure rules are applied immediately
             rm -f "$FIREWALL_RULES_APPLIED"
         fi
     fi
@@ -112,7 +114,24 @@ else
     echo "No bandwidth limit is configured. Traffic is unrestricted."
     sudo ufw default allow incoming
     sudo ufw default allow outgoing
+    sudo ufw reload # Ensure rules are applied immediately
 fi
+
+# Real-Time Data Usage (Optional)
+show_real_time_usage() {
+    echo "Fetching real-time bandwidth usage..."
+    while true; do
+        # Use iptables to monitor real-time traffic
+        rx_bytes=$(sudo iptables -L INPUT -v -x -n | awk '/eth/{print $2}')
+        tx_bytes=$(sudo iptables -L OUTPUT -v -x -n | awk '/eth/{print $2}')
+
+        total_bytes=$((rx_bytes + tx_bytes))
+        total_hr=$(convert_bytes "$total_bytes")
+        echo "Real-Time Usage: $total_hr"
+
+        sleep 5 # Refresh every 5 seconds
+    done
+}
 
 # Menu-driven interface
 show_menu() {
@@ -120,7 +139,8 @@ show_menu() {
     echo "1. Add Bandwidth Limit and Renewal Cycle"
     echo "2. Reset Data Limit and Renew"
     echo "3. Uninstall Script"
-    echo "4. Exit"
+    echo "4. Show Real-Time Usage"
+    echo "5. Exit"
     read -p "Enter your choice: " choice
 
     case $choice in
@@ -134,6 +154,9 @@ show_menu() {
             uninstall_script
             ;;
         4)
+            show_real_time_usage
+            ;;
+        5)
             exit 0
             ;;
         *)
@@ -180,8 +203,9 @@ reset_data_limit() {
     echo "Resetting data limit and renewing cycle..."
     date +%Y-%m-%d > "$START_DATE_FILE"
     rm -f "$FIREWALL_RULES_APPLIED"
-    sudo ufw allow out to any
-    sudo ufw allow in from any
+    sudo ufw default allow incoming
+    sudo ufw default allow outgoing
+    sudo ufw reload # Ensure rules are applied immediately
     echo "Data limit reset and renewed successfully!"
     show_menu
 }
@@ -203,8 +227,9 @@ if (( current_timestamp >= expiry_timestamp )); then
     echo "Renewal cycle expired. Resetting..."
     date +%Y-%m-%d > "$START_DATE_FILE" # Reset start date
     rm -f "$FIREWALL_RULES_APPLIED"     # Remove firewall rules flag
-    sudo ufw allow out to any
-    sudo ufw allow in from any
+    sudo ufw default allow incoming
+    sudo ufw default allow outgoing
+    sudo ufw reload # Ensure rules are applied immediately
 fi
 
 # Show the menu
