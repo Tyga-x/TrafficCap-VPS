@@ -116,7 +116,7 @@ reset_data_limit() {
 # Uninstall Script
 uninstall_script() {
     echo "Uninstalling script..."
-    sudo bash /usr/local/bin/cap-vps/uninstall.sh
+    sudo bash /usr/local/bin/cap-vps-scripts/uninstall.sh # Corrected path
     exit 0
 }
 
