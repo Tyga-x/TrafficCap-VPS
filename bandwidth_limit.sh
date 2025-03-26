@@ -1,10 +1,9 @@
 #!/bin/bash
 
 # Variables
-START_DATE_FILE="/home/ubuntu/bandwidth_start"
-FIREWALL_RULES_APPLIED="/home/ubuntu/bandwidth_firewall_applied"
 BANDWIDTH_LIMIT_FILE="/home/ubuntu/bandwidth_limit"
 RENEWAL_CYCLE_FILE="/home/ubuntu/renewal_cycle"
+FIREWALL_RULES_APPLIED="/home/ubuntu/bandwidth_firewall_applied"
 
 # Function to convert bytes to human-readable format
 convert_bytes() {
@@ -20,19 +19,19 @@ convert_bytes() {
     fi
 }
 
-# Initialize start date and renewal cycle if not exists
-if [[ ! -f "$START_DATE_FILE" ]]; then
-    date +%Y-%m-%d > "$START_DATE_FILE"
-fi
+# Initialize renewal cycle if not exists
 if [[ ! -f "$RENEWAL_CYCLE_FILE" ]]; then
     echo "30" > "$RENEWAL_CYCLE_FILE" # Default: 30-day cycle
 fi
 
-# Load the current bandwidth limit (if set)
+# Load the current bandwidth limit and start date (if set)
 if [[ -f "$BANDWIDTH_LIMIT_FILE" ]]; then
-    LIMIT_BYTES=$(cat "$BANDWIDTH_LIMIT_FILE")
+    LIMIT_INFO=$(cat "$BANDWIDTH_LIMIT_FILE")
+    LIMIT_BYTES=$(echo "$LIMIT_INFO" | awk '{print $1}')
+    START_DATE=$(echo "$LIMIT_INFO" | awk '{print $2}')
 else
     LIMIT_BYTES=0 # No limit set
+    START_DATE=$(date +%Y-%m-%d) # Default to today's date
 fi
 
 # Load the renewal cycle duration
@@ -83,8 +82,7 @@ calculate_total_usage() {
 }
 
 # Calculate total data used since start date
-start_date=$(cat "$START_DATE_FILE")
-total_bytes=$(calculate_total_usage "$start_date" "$INTERFACES")
+total_bytes=$(calculate_total_usage "$START_DATE" "$INTERFACES")
 
 # Convert bytes to human-readable format
 total_hr=$(convert_bytes "$total_bytes")
@@ -218,8 +216,13 @@ add_bandwidth_and_renewal_limit() {
         return
     fi
 
-    echo "$LIMIT_BYTES" > "$BANDWIDTH_LIMIT_FILE"
+    # Set the start date to today
+    START_DATE=$(date +%Y-%m-%d)
+
+    # Save the limit and start date to the file
+    echo "$LIMIT_BYTES $START_DATE" > "$BANDWIDTH_LIMIT_FILE"
     echo "Bandwidth limit set to $limit_value $limit_unit ($(convert_bytes $LIMIT_BYTES))."
+    echo "Start date set to $START_DATE."
 
     echo "Enter renewal cycle duration (in days, e.g., 30, 60):"
     read -p "Renewal Cycle (days): " renewal_days
@@ -238,11 +241,20 @@ add_bandwidth_and_renewal_limit() {
 # Reset Data Limit and Renew
 reset_data_limit() {
     echo "Resetting data limit and renewing cycle..."
-    date +%Y-%m-%d > "$START_DATE_FILE"
+
+    # Reset start date to today
+    START_DATE=$(date +%Y-%m-%d)
+    echo "New start date set to $START_DATE."
+
+    # Remove the bandwidth limit file
+    rm -f "$BANDWIDTH_LIMIT_FILE"
     rm -f "$FIREWALL_RULES_APPLIED"
+
+    # Reset firewall rules
     sudo ufw default allow incoming
     sudo ufw default allow outgoing
     sudo ufw reload # Ensure rules are applied immediately
+
     echo "Data limit reset and renewed successfully!"
     show_menu
 }
@@ -256,14 +268,20 @@ uninstall_script() {
 
 # Check if renewal cycle has expired
 current_timestamp=$(date +%s)
-start_date=$(cat "$START_DATE_FILE")
-renewal_days=$(cat "$RENEWAL_CYCLE_FILE")
-expiry_timestamp=$(date -d "$start_date +$renewal_days days" +%s)
+expiry_timestamp=$(date -d "$START_DATE +$RENEWAL_DAYS days" +%s)
 
 if (( current_timestamp >= expiry_timestamp )); then
     echo "Renewal cycle expired. Resetting..."
-    date +%Y-%m-%d > "$START_DATE_FILE" # Reset start date
-    rm -f "$FIREWALL_RULES_APPLIED"     # Remove firewall rules flag
+
+    # Reset start date to today
+    START_DATE=$(date +%Y-%m-%d)
+    echo "New start date set to $START_DATE."
+
+    # Remove the bandwidth limit file and firewall rules flag
+    rm -f "$BANDWIDTH_LIMIT_FILE"
+    rm -f "$FIREWALL_RULES_APPLIED"
+
+    # Reset firewall rules
     sudo ufw default allow incoming
     sudo ufw default allow outgoing
     sudo ufw reload # Ensure rules are applied immediately
