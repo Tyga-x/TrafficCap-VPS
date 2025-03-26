@@ -12,25 +12,25 @@ if [[ -z "$INTERFACE" ]]; then
     exit 1
 fi
 echo "Setting up vnstat for interface: $INTERFACE"
-sudo vnstat -u -i "$INTERFACE"
+sudo vnstat --add -i "$INTERFACE" # Use --add instead of -u (deprecated in newer versions)
 sudo systemctl enable vnstat
 sudo systemctl start vnstat
 
 # Step 3: Download files from GitHub repository
 echo "Downloading files from GitHub repository..."
 REPO_URL="https://raw.githubusercontent.com/Tyga-x/TrafficCap-VPS/main"
-sudo mkdir -p /usr/local/bin/cap-vps
-sudo wget -O /usr/local/bin/cap-vps/bandwidth_limit.sh "$REPO_URL/bandwidth_limit.sh"
+sudo mkdir -p /usr/local/bin/cap-vps-scripts # Use a different directory name
+sudo wget -O /usr/local/bin/cap-vps-scripts/bandwidth_limit.sh "$REPO_URL/bandwidth_limit.sh"
 if [[ $? -ne 0 ]]; then
     echo "Error: Failed to download the bandwidth_limit.sh script. Exiting."
     exit 1
 fi
-sudo chmod +x /usr/local/bin/cap-vps/bandwidth_limit.sh
+sudo chmod +x /usr/local/bin/cap-vps-scripts/bandwidth_limit.sh
 
 # Step 4: Create the global command script (cap-vps)
 echo "Creating the 'cap-vps' global command..."
 echo '#!/bin/bash' > cap-vps
-echo 'bash /usr/local/bin/cap-vps/bandwidth_limit.sh' >> cap-vps
+echo 'bash /usr/local/bin/cap-vps-scripts/bandwidth_limit.sh' >> cap-vps
 sudo mv cap-vps /usr/local/bin/
 sudo chmod +x /usr/local/bin/cap-vps
 
