@@ -3,7 +3,7 @@
 # Step 1: Update system and install required dependencies
 echo "Updating system and installing dependencies..."
 sudo apt update
-sudo apt install -y vnstat jq ufw bc
+sudo apt install -y vnstat jq ufw bc git
 
 # Step 2: Set up vnstat for the default network interface
 INTERFACE=$(ip route | grep default | awk '{print $5}')
@@ -12,10 +12,11 @@ sudo vnstat -u -i $INTERFACE
 sudo systemctl enable vnstat
 sudo systemctl start vnstat
 
-# Step 3: Create necessary directories and copy files
-echo "Creating directories and copying files..."
+# Step 3: Download files from GitHub repository
+echo "Downloading files from GitHub repository..."
+REPO_URL="https://raw.githubusercontent.com/Tyga-x/TrafficCap-VPS/main"
 sudo mkdir -p /usr/local/bin/cap-vps
-sudo cp bandwidth_limit.sh /usr/local/bin/cap-vps/bandwidth_limit.sh
+sudo wget -O /usr/local/bin/cap-vps/bandwidth_limit.sh "$REPO_URL/bandwidth_limit.sh"
 sudo chmod +x /usr/local/bin/cap-vps/bandwidth_limit.sh
 
 # Step 4: Create the global command script (cap-vps)
